@@ -1,7 +1,7 @@
 package ral
 
 import (
-	//"fmt"
+	"fmt"
 
 	//"github.com/RadiumByte/Robot-Server/cmd/web/app"
 	"github.com/valyala/fasthttp"
@@ -22,6 +22,7 @@ func (robot *RoboCar) SendCommand(command string) {
 	resp := fasthttp.AcquireResponse()
 	client := &fasthttp.Client{}
 	client.Do(req, resp)
+	fmt.Println("Command sent to robot: " + command)
 }
 
 // NewRoboCar constructs object of RoboCar

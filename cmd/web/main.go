@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	//"sync"
 
 	"github.com/RadiumByte/Robot-Server/cmd/web/api"
 	"github.com/RadiumByte/Robot-Server/cmd/web/app"

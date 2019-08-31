@@ -2,22 +2,21 @@ package api
 
 import (
 	"fmt"
-	//"strconv"
 
 	"github.com/RadiumByte/Robot-Server/cmd/web/app"
 	"github.com/buaazp/fasthttprouter"
 	"github.com/valyala/fasthttp"
 )
 
+// WebServer is
 type WebServer struct {
 	application app.ManualControl
 }
 
 // PushCommand pushes new Command to Application
 func (server *WebServer) PushCommand(ctx *fasthttp.RequestCtx) {
-	fmt.Println("Controller started")
 	commandStr := ctx.UserValue("command").(string)
-	fmt.Println("API got data: " + commandStr)
+	fmt.Println("Server received command: " + commandStr)
 	server.application.TransferCommand(commandStr)
 }
 
@@ -26,9 +25,8 @@ func (server *WebServer) Start(port string) {
 	server.application.Start()
 
 	router := fasthttprouter.New()
-	router.POST("/:command", server.PushCommand)
+	router.PUT("/:command", server.PushCommand)
 
-	port = ":8080"
 	fmt.Println("Server is starting on port" + port)
 	fmt.Println(fasthttp.ListenAndServe(port, router.Handler))
 }
@@ -40,4 +38,3 @@ func NewWebServer(application app.ManualControl) (*WebServer, error) {
 
 	return res, nil
 }
-

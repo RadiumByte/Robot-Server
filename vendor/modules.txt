@@ -1,5 +1,3 @@
-# github.com/DiaElectronics/online_kasse v0.0.0-20190730054535-9b76cfbbbdc4
-github.com/DiaElectronics/online_kasse/cmd/web/app
 # github.com/buaazp/fasthttprouter v0.1.1
 github.com/buaazp/fasthttprouter
 # github.com/klauspost/compress v1.4.0
