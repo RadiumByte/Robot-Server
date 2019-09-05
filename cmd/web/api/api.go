@@ -8,16 +8,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// WebServer is
+// WebServer is providing foreign access to the Robot Server
 type WebServer struct {
-	application app.ManualControl
+	application app.RobotServer
 }
 
-// PushCommand pushes new Command to Application
+// ProcessCommand pushes new Command to Application for processing
 func (server *WebServer) PushCommand(ctx *fasthttp.RequestCtx) {
 	commandStr := ctx.UserValue("command").(string)
+
 	fmt.Println("Server received command: " + commandStr)
-	server.application.TransferCommand(commandStr)
+
+	server.application.ProcessCommand(commandStr)
 }
 
 // Start initializes Web Server, starts application and begins serving
@@ -32,7 +34,7 @@ func (server *WebServer) Start(port string) {
 }
 
 // NewWebServer constructs Web Server
-func NewWebServer(application app.ManualControl) (*WebServer, error) {
+func NewWebServer(application app.RobotServer) (*WebServer, error) {
 	res := &WebServer{}
 	res.application = application
 

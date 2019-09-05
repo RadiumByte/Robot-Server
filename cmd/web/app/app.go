@@ -22,10 +22,11 @@ func bufferEraser(source *gocv.VideoCapture, m *sync.Mutex) {
 	}
 }
 
-// ManualControl is an interface for accepting income commands from Web Server
-type ManualControl interface {
-	TransferCommand(string)
+// RobotServer is an interface for accepting income commands from Web Server
+type RobotServer interface {
+	ProcessCommand(string)
 	ChangeMode()
+	ChangeCascade(int8)
 	Start()
 }
 
@@ -36,30 +37,42 @@ type RobotAccessLayer interface {
 
 // Application is responsible for all logics and communicates with other layers
 type Application struct {
-	Robot    RobotAccessLayer
-	IsManual bool
+	Robot       RobotAccessLayer
+	IsManual    bool
+	CascadeType int8
 }
-
-/*
-	valueStr := command[1:len(command)]
-	value, err := strconv.ParseInt(valueStr)
-
-	if err != nil {
-		fmt.Fprintf(ctx, "Invalid type of parameter: might be int\n")
-		return
-	}
-*/
 
 // ChangeMode swaps current mode of application
 func (app *Application) ChangeMode() {
 	app.IsManual = !app.IsManual
-	fmt.Println("Mode changed")
+	fmt.Println("Driving mode changed")
 }
 
-// TransferCommand parses command and determines what to do with it
-func (app *Application) TransferCommand(command string) {
+// ChangeCascade changes cascade, assigned to the specific sign
+// 0 - stop
+// 1 - circle
+// 2 - trapeze
+func (app *Application) ChangeCascade(cascade int8) {
+	app.CascadeType = cascade
+	if cascade == 0 {
+		fmt.Println("Cascade type changed to Stop Sign")
+	} else if cascade == 1 {
+		fmt.Println("Cascade type changed to Circle Sign")
+	} else if cascade == 2 {
+		fmt.Println("Cascade type changed to Trapeze Sign")
+	}
+}
+
+// ProcessCommand parses command and determines what to do with it
+func (app *Application) ProcessCommand(command string) {
 	if command == "swap" {
 		app.ChangeMode()
+	} else if command == "stop" {
+		app.ChangeCascade(0)
+	} else if command == "circle" {
+		app.ChangeCascade(1)
+	} else if command == "trapeze" {
+		app.ChangeCascade(2)
 	} else {
 		firstChar := command[0]
 		if firstChar == 'l' || firstChar == 'r' || firstChar == 'f' || firstChar == 'b' {
@@ -96,54 +109,34 @@ func (app *Application) ai() {
 	imgCurrent := gocv.NewMat()
 	defer imgCurrent.Close()
 
-	imgResult := gocv.NewMat()
-	defer imgResult.Close()
+	cascadeCircle := gocv.NewCascadeClassifier()
+	cascadeCircle.Load("circle.xml")
 
-	mask := gocv.NewMat()
-	defer mask.Close()
+	cascadeStop := gocv.NewCascadeClassifier()
+	cascadeStop.Load("stop.xml")
 
-	//var imageSize int = 200
-	//var matchThreshold int = 3
-
-	cascade := gocv.NewCascadeClassifier()
-	cascade.Load("cups.xml")
-
-	imgCurrent = gocv.IMRead("sign2.jpg", 0)
+	cascadeTrapeze := gocv.NewCascadeClassifier()
+	cascadeTrapeze.Load("trapeze.xml")
 
 	fmt.Printf("Main loop is starting...")
 	for {
 		if !app.IsManual {
-			//m.Lock()
-			//ok := webcam.Read(&imgCurrent)
-			//m.Unlock()
+			m.Lock()
+			ok := webcam.Read(&imgCurrent)
+			m.Unlock()
 
-			//if !ok {
-			//	fmt.Printf("Error while read RTSP: program aborted...")
-			//	return
-			//}
+			if !ok {
+				fmt.Printf("Error while read RTSP: program aborted...")
+				return
+			}
 			if imgCurrent.Empty() {
 				continue
 			}
 
-			var min image.Point
-			min.X = 0
-			min.Y = 0
-			var max image.Point
-			max.X = 0
-			max.Y = 0
+			target := cascade.DetectMultiScale(imgCurrent)
 
-			var col color.RGBA
-			col.B = 255
-
-			targets := cascade.DetectMultiScale(imgCurrent)
-			//targets := cascade.DetectMultiScaleWithParams(imgCurrent, 1.4, 3, 0, min, max)
-			if len(targets) == 0 {
-				fmt.Println("No objects found")
-				continue
-			}
-			first := targets[0]
-
-			gocv.Rectangle(&imgCurrent, first, col, 2)
+			// TO DO: make image processing here
+			// TO DO: make car driving here
 
 			window.IMShow(imgCurrent)
 			if window.WaitKey(1) >= 0 {

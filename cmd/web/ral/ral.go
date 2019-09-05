@@ -3,7 +3,6 @@ package ral
 import (
 	"fmt"
 
-	//"github.com/RadiumByte/Robot-Server/cmd/web/app"
 	"github.com/valyala/fasthttp"
 )
 
@@ -13,8 +12,11 @@ type RoboCar struct {
 	CarPort string
 }
 
+// SendCommand creates HTTP client and sends coommand to robot
 func (robot *RoboCar) SendCommand(command string) {
 	url := "http://" + robot.CarIP + robot.CarPort + "/" + command
+	fmt.Println("Trying to send command to url: " + url)
+
 	req := fasthttp.AcquireRequest()
 	req.SetRequestURI(url)
 	req.Header.SetMethod("PUT")
@@ -22,6 +24,7 @@ func (robot *RoboCar) SendCommand(command string) {
 	resp := fasthttp.AcquireResponse()
 	client := &fasthttp.Client{}
 	client.Do(req, resp)
+
 	fmt.Println("Command sent to robot: " + command)
 }
 
