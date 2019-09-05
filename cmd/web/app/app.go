@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"image"
-	"image/color"
+	//"image"
+	//"image/color"
 
 	"gocv.io/x/gocv"
 )
@@ -69,14 +69,16 @@ func (app *Application) ProcessCommand(command string) {
 		app.ChangeMode()
 	} else if command == "stop" {
 		app.ChangeCascade(0)
+		fmt.Println("Stop set")
 	} else if command == "circle" {
 		app.ChangeCascade(1)
+		fmt.Println("Circle set")
 	} else if command == "trapeze" {
 		app.ChangeCascade(2)
+		fmt.Println("Trapeze set")
 	} else {
 		firstChar := command[0]
-		if firstChar == 'l' || firstChar == 'r' || firstChar == 'f' || firstChar == 'b' {
-			fmt.Println("Application verified data: " + command)
+		if firstChar == 's' || firstChar == 'f' || firstChar == 'b' {
 			app.Robot.SendCommand(command)
 		}
 	}
@@ -109,14 +111,16 @@ func (app *Application) ai() {
 	imgCurrent := gocv.NewMat()
 	defer imgCurrent.Close()
 
-	cascadeCircle := gocv.NewCascadeClassifier()
-	cascadeCircle.Load("circle.xml")
+	/*
+		cascadeCircle := gocv.NewCascadeClassifier()
+		cascadeCircle.Load("circle.xml")
 
-	cascadeStop := gocv.NewCascadeClassifier()
-	cascadeStop.Load("stop.xml")
+		cascadeStop := gocv.NewCascadeClassifier()
+		cascadeStop.Load("stop.xml")
 
-	cascadeTrapeze := gocv.NewCascadeClassifier()
-	cascadeTrapeze.Load("trapeze.xml")
+		cascadeTrapeze := gocv.NewCascadeClassifier()
+		cascadeTrapeze.Load("trapeze.xml")
+	*/
 
 	fmt.Printf("Main loop is starting...")
 	for {
@@ -133,7 +137,7 @@ func (app *Application) ai() {
 				continue
 			}
 
-			target := cascade.DetectMultiScale(imgCurrent)
+			//target := cascade.DetectMultiScale(imgCurrent)
 
 			// TO DO: make image processing here
 			// TO DO: make car driving here

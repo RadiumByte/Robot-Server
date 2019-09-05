@@ -17,7 +17,7 @@ type WebServer struct {
 func (server *WebServer) PushCommand(ctx *fasthttp.RequestCtx) {
 	commandStr := ctx.UserValue("command").(string)
 
-	fmt.Println("Server received command: " + commandStr)
+	//fmt.Println("Server received command: " + commandStr)
 
 	server.application.ProcessCommand(commandStr)
 }

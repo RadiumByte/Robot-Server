@@ -1,10 +1,7 @@
 package ral
 
-import (
-	"fmt"
-
-	"github.com/valyala/fasthttp"
-)
+//"fmt"
+//"github.com/valyala/fasthttp"
 
 // RoboCar represents Raspberry Pi based car
 type RoboCar struct {
@@ -14,18 +11,18 @@ type RoboCar struct {
 
 // SendCommand creates HTTP client and sends coommand to robot
 func (robot *RoboCar) SendCommand(command string) {
-	url := "http://" + robot.CarIP + robot.CarPort + "/" + command
-	fmt.Println("Trying to send command to url: " + url)
+	//url := "http://" + robot.CarIP + robot.CarPort + "/" + command
+	/*
+		req := fasthttp.AcquireRequest()
+		req.SetRequestURI(url)
+		req.Header.SetMethod("PUT")
 
-	req := fasthttp.AcquireRequest()
-	req.SetRequestURI(url)
-	req.Header.SetMethod("PUT")
+		resp := fasthttp.AcquireResponse()
+		client := &fasthttp.Client{}
+		client.Do(req, resp)
 
-	resp := fasthttp.AcquireResponse()
-	client := &fasthttp.Client{}
-	client.Do(req, resp)
-
-	fmt.Println("Command sent to robot: " + command)
+		fmt.Println("Command sent to robot: " + command)
+	*/
 }
 
 // NewRoboCar constructs object of RoboCar
