@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	//"image"
+	"image"
 	//"image/color"
 
 	"gocv.io/x/gocv"
@@ -25,7 +25,10 @@ func bufferEraser(source *gocv.VideoCapture, m *sync.Mutex) {
 // RobotServer is an interface for accepting income commands from Web Server
 type RobotServer interface {
 	ProcessCommand(string)
-	ChangeMode()
+
+	ChangeBlocking(bool)
+	ChangeManual(bool)
+
 	ChangeCascade(int8)
 	Start()
 }
@@ -39,13 +42,30 @@ type RobotAccessLayer interface {
 type Application struct {
 	Robot       RobotAccessLayer
 	IsManual    bool
+	IsBlocked   bool
 	CascadeType int8
 }
 
-// ChangeMode swaps current mode of application
-func (app *Application) ChangeMode() {
-	app.IsManual = !app.IsManual
-	fmt.Println("Driving mode changed")
+// ChangeBlocking can block/unblock car movements
+func (app *Application) ChangeBlocking(mode bool) {
+	app.IsBlocked = mode
+
+	if mode {
+		fmt.Println("Car is blocked")
+	} else {
+		fmt.Println("Car is moving")
+	}
+}
+
+// ChangeBlocking sets current mode of driving
+func (app *Application) ChangeManual(mode bool) {
+	app.IsManual = mode
+
+	if mode {
+		fmt.Println("Car is on manual control")
+	} else {
+		fmt.Println("Car is driving automatically")
+	}
 }
 
 // ChangeCascade changes cascade, assigned to the specific sign
@@ -65,21 +85,33 @@ func (app *Application) ChangeCascade(cascade int8) {
 
 // ProcessCommand parses command and determines what to do with it
 func (app *Application) ProcessCommand(command string) {
-	if command == "swap" {
-		app.ChangeMode()
-	} else if command == "stop" {
+	if command == "halt" {
+		app.ChangeBlocking(true)
+
+	} else if command == "go" {
+		app.ChangeBlocking(false)
+
+	} else if command == "manual" {
+		app.ChangeManual(true)
+
+	} else if command == "auto" {
+		app.ChangeManual(false)
+
+	} else if command == "stopsign" {
 		app.ChangeCascade(0)
-		fmt.Println("Stop set")
-	} else if command == "circle" {
+
+	} else if command == "circlesign" {
 		app.ChangeCascade(1)
-		fmt.Println("Circle set")
-	} else if command == "trapeze" {
+
+	} else if command == "trapezesign" {
 		app.ChangeCascade(2)
-		fmt.Println("Trapeze set")
+
 	} else {
 		firstChar := command[0]
 		if firstChar == 's' || firstChar == 'f' || firstChar == 'b' {
-			app.Robot.SendCommand(command)
+			if !app.IsBlocked {
+				app.Robot.SendCommand(command)
+			}
 		}
 	}
 }
@@ -111,40 +143,58 @@ func (app *Application) ai() {
 	imgCurrent := gocv.NewMat()
 	defer imgCurrent.Close()
 
-	/*
-		cascadeCircle := gocv.NewCascadeClassifier()
-		cascadeCircle.Load("circle.xml")
+	cascadeCircle := gocv.NewCascadeClassifier()
+	cascadeCircle.Load("circle.xml")
 
-		cascadeStop := gocv.NewCascadeClassifier()
-		cascadeStop.Load("stop.xml")
+	cascadeStop := gocv.NewCascadeClassifier()
+	cascadeStop.Load("stop.xml")
 
-		cascadeTrapeze := gocv.NewCascadeClassifier()
-		cascadeTrapeze.Load("trapeze.xml")
-	*/
+	cascadeTrapeze := gocv.NewCascadeClassifier()
+	cascadeTrapeze.Load("trapeze.xml")
 
 	fmt.Printf("Main loop is starting...")
 	for {
 		if !app.IsManual {
-			m.Lock()
-			ok := webcam.Read(&imgCurrent)
-			m.Unlock()
+			if !app.IsBlocked {
+				m.Lock()
+				ok := webcam.Read(&imgCurrent)
+				m.Unlock()
 
-			if !ok {
-				fmt.Printf("Error while read RTSP: program aborted...")
-				return
-			}
-			if imgCurrent.Empty() {
-				continue
-			}
+				if !ok {
+					fmt.Printf("Error while read RTSP: program aborted...")
+					return
+				}
+				if imgCurrent.Empty() {
+					continue
+				}
 
-			//target := cascade.DetectMultiScale(imgCurrent)
+				var target []image.Rectangle
 
-			// TO DO: make image processing here
-			// TO DO: make car driving here
+				if app.CascadeType == 0 {
+					// Stop cascade
+					target = cascadeStop.DetectMultiScale(imgCurrent)
 
-			window.IMShow(imgCurrent)
-			if window.WaitKey(1) >= 0 {
-				break
+				} else if app.CascadeType == 1 {
+					// Circle cascade
+					target = cascadeCircle.DetectMultiScale(imgCurrent)
+
+				} else if app.CascadeType == 2 {
+					// Trapeze cascade
+					target = cascadeTrapeze.DetectMultiScale(imgCurrent)
+
+				}
+
+				var centroid image.Point
+				centroid.X = target[0].Dx() / 2
+				centroid.Y = target[0].Dy() / 2
+
+				// TO DO: make image processing here
+				// TO DO: make car driving here
+
+				window.IMShow(imgCurrent)
+				if window.WaitKey(1) >= 0 {
+					break
+				}
 			}
 		}
 	}
