@@ -2,17 +2,20 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 
 	"image"
-	//"image/color"
+	"image/color"
 
 	"gocv.io/x/gocv"
+	"gocv.io/x/gocv/contrib"
 )
 
 // bufferEraser cleans input videostream from unnecessary frames
 func bufferEraser(source *gocv.VideoCapture, m *sync.Mutex) {
+
 	tmp := gocv.NewMat()
 	defer tmp.Close()
 
@@ -21,6 +24,7 @@ func bufferEraser(source *gocv.VideoCapture, m *sync.Mutex) {
 		_ = source.Read(&tmp)
 		m.Unlock()
 	}
+
 }
 
 // RobotServer is an interface for accepting income commands from Web Server
@@ -117,11 +121,15 @@ func (app *Application) ProcessCommand(command string) {
 	}
 }
 
+func distBetweenPoints(from image.Point, to image.Point) float64 {
+	return math.Sqrt(float64((to.X-from.X)*(to.X-from.X) + (to.Y-from.Y)*(to.Y-from.Y)))
+}
+
 // NewApplication constructs Application
 func NewApplication(robot RobotAccessLayer) (*Application, error) {
 	res := &Application{}
 	res.Robot = robot
-
+	res.CascadeType = 2
 	return res, nil
 }
 
@@ -144,6 +152,13 @@ func (app *Application) ai() {
 	imgCurrent := gocv.NewMat()
 	defer imgCurrent.Close()
 
+	imgTarget := gocv.NewMat()
+	defer imgTarget.Close()
+
+	imgStopSign := gocv.NewMat()
+	defer imgStopSign.Close()
+	imgStopSign = gocv.IMRead("yield.jpg", 0)
+
 	cascadeCircle := gocv.NewCascadeClassifier()
 	cascadeCircle.Load("circle.xml")
 
@@ -151,9 +166,25 @@ func (app *Application) ai() {
 	cascadeStop.Load("stop.xml")
 
 	cascadeTrapeze := gocv.NewCascadeClassifier()
-	cascadeTrapeze.Load("trapeze.xml")
+	cascadeTrapeze.Load("yield.xml")
 
-	fmt.Printf("Main loop is starting...")
+	blue := color.RGBA{0, 0, 255, 0}
+
+	// "Memory" about target
+	var prevTargetCenter image.Point
+	var prevTargetSquare float64
+	var prevTargetRect image.Rectangle
+
+	var isFirstIteration bool = true
+
+	// Use these constants to change object filtering
+	var MAX_DISTANCE_DIFF float64 = 500.0
+	var MAX_SQUARE_DIFF float64 = 15000.0
+	var MIN_SIMILARITY_RATE float64 = 60.0
+
+	comparator := contrib.ColorMomentHash{}
+
+	fmt.Println("Main loop is starting...")
 	for {
 		if !app.IsManual {
 			if !app.IsBlocked {
@@ -165,15 +196,19 @@ func (app *Application) ai() {
 					fmt.Printf("Error while read RTSP: program aborted...")
 					return
 				}
+
 				if imgCurrent.Empty() {
 					continue
 				}
+
+				fmt.Println("Image got")
 
 				var target []image.Rectangle
 
 				if app.CascadeType == 0 {
 					// Stop cascade
 					target = cascadeStop.DetectMultiScale(imgCurrent)
+					fmt.Println("Using target cascade")
 
 				} else if app.CascadeType == 1 {
 					// Circle cascade
@@ -184,13 +219,105 @@ func (app *Application) ai() {
 					target = cascadeTrapeze.DetectMultiScale(imgCurrent)
 				}
 
+				if len(target) == 0 {
+					fmt.Println("Cascade returned empty result")
+					continue
+				}
+
+				var closeTargets []image.Rectangle
+				var trustedObjects []image.Rectangle
+
+				if isFirstIteration {
+					// At first iteration simply determine biggest object
+					fmt.Println("First iteration - find max square")
+
+					maxSquareIndex := -1
+					maxSquare := 0.0
+					for i, r := range target {
+						currentSquare := float64(r.Dx() * r.Dy())
+						if currentSquare > maxSquare {
+							maxSquare = currentSquare
+							maxSquareIndex = i
+							fmt.Print("Max square updated to ")
+							fmt.Println(maxSquare)
+						}
+					}
+					trustedObjects = append(trustedObjects, target[maxSquareIndex])
+
+				} else {
+					// First step of filtering - find geometrically close objects
+					fmt.Println("Generic iteration - filtering")
+
+					for _, r := range target {
+						square := r.Dx() * r.Dy()
+						var centroidCurrent image.Point
+						centroidCurrent.X = (r.Dx() / 2) + r.Min.X
+						centroidCurrent.Y = (r.Dy() / 2) + r.Min.Y
+
+						fmt.Print("Distance between centers: ")
+						fmt.Println(distBetweenPoints(centroidCurrent, prevTargetCenter))
+						fmt.Print("Squares difference: ")
+						fmt.Println(math.Abs(float64(square) - prevTargetSquare))
+
+						if distBetweenPoints(centroidCurrent, prevTargetCenter) < MAX_DISTANCE_DIFF {
+							if math.Abs(float64(square)-prevTargetSquare) < MAX_SQUARE_DIFF {
+								closeTargets = append(closeTargets, r)
+							}
+						}
+					}
+
+					computedCurrent := gocv.NewMat()
+					defer computedCurrent.Close()
+
+					computedTarget := gocv.NewMat()
+					defer computedTarget.Close()
+
+					regionTarget := gocv.NewMat()
+					defer regionTarget.Close()
+					//regionTarget = imgCurrent.Region(prevTargetRect)
+					comparator.Compute(imgStopSign, &computedTarget)
+
+					// Second step of filtering - determine object with high similarity rate
+					for _, r := range closeTargets {
+						regionCurrent := gocv.NewMat()
+						defer regionCurrent.Close()
+						regionCurrent = imgCurrent.Region(r)
+
+						comparator.Compute(regionCurrent, &computedCurrent)
+						similarity := comparator.Compare(computedCurrent, computedTarget)
+						fmt.Print("CMH similarity: ")
+						fmt.Printf("%0.4f\n", similarity)
+
+						if similarity < MIN_SIMILARITY_RATE && similarity > 1.0 {
+							trustedObjects = append(trustedObjects, r)
+						}
+					}
+				}
+
+				if len(trustedObjects) == 0 {
+					fmt.Println("No trusted objects found")
+					continue
+				}
+
 				var command string
 
 				var centroid image.Point
-				centroid.X = target[0].Dx() / 2
-				centroid.Y = target[0].Dy() / 2
+				centroid.X = (trustedObjects[0].Dx() / 2) + trustedObjects[0].Min.X
+				centroid.Y = (trustedObjects[0].Dy() / 2) + trustedObjects[0].Min.Y
 
-				//frameCenter := imgCurrent.Cols() / 2
+				prevTargetCenter = centroid
+				fmt.Println("Target centroid updated: " + centroid.String())
+				prevTargetSquare = float64(trustedObjects[0].Dx() * trustedObjects[0].Dy())
+				fmt.Print("Target square updated: ")
+				fmt.Println(prevTargetSquare)
+
+				if isFirstIteration {
+					prevTargetRect = trustedObjects[0]
+					fmt.Println("Target rectangle updated: " + prevTargetRect.String())
+
+					isFirstIteration = false
+				}
+
 				rightBorder := int(float64(imgCurrent.Cols()) * 0.6)
 				leftBorder := int(float64(imgCurrent.Cols()) * 0.4)
 
@@ -215,11 +342,18 @@ func (app *Application) ai() {
 
 				app.Robot.SendCommand(command)
 
-				window.IMShow(imgCurrent)
-				if window.WaitKey(1) >= 0 {
-					break
-				}
+				gocv.Rectangle(&imgCurrent, trustedObjects[0], blue, 3)
+
+				size := gocv.GetTextSize("Target", gocv.FontHersheyPlain, 1.2, 2)
+				pt := image.Pt(trustedObjects[0].Min.X+(trustedObjects[0].Min.X/2)-(size.X/2), trustedObjects[0].Min.Y-2)
+				gocv.PutText(&imgCurrent, "Target", pt, gocv.FontHersheyPlain, 1.2, blue, 2)
 			}
+
+			window.IMShow(imgCurrent)
+			if window.WaitKey(1) >= 0 {
+				break
+			}
+
 		}
 	}
 }
