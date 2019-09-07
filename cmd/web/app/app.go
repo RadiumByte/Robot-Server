@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 
 	"image"
@@ -181,15 +182,38 @@ func (app *Application) ai() {
 				} else if app.CascadeType == 2 {
 					// Trapeze cascade
 					target = cascadeTrapeze.DetectMultiScale(imgCurrent)
-
 				}
+
+				var command string
 
 				var centroid image.Point
 				centroid.X = target[0].Dx() / 2
 				centroid.Y = target[0].Dy() / 2
 
-				// TO DO: make image processing here
-				// TO DO: make car driving here
+				frameCenter := imgCurrent.Cols() / 2
+				rightBorder := imgCurrent.Cols() * 0.6
+				leftBorder := imgCurrent.Cols() * 0.4
+
+				if centroid.X >= leftBorder && centroid.X <= rightBorder {
+					// Need to ride forward
+					command = "S50A"
+
+				} else if centroid.X < leftBorder {
+					// Need to steer left
+					var steerValue int
+					steerValue = (50 * centroid.X) / leftBorder
+					steerValueStr := strconv.Itoa(steerValue)
+					command = "S" + steerValueStr + "A"
+
+				} else if centroid.X > rightBorder {
+					// Need to steer right
+					var steerValue int
+					steerValue = 100 - ((50 * centroid.X) / (imgCurrent.Cols() - rightBorder))
+					steerValueStr := strconv.Itoa(steerValue)
+					command = "S" + steerValueStr + "A"
+				}
+
+				app.Robot.SendCommand(command)
 
 				window.IMShow(imgCurrent)
 				if window.WaitKey(1) >= 0 {
