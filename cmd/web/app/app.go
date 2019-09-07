@@ -126,7 +126,7 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 }
 
 func (app *Application) ai() {
-	webcam, err := gocv.OpenVideoCapture("rtsp://81.23.197.208/user=admin_password=8555_channel=0_stream=0.sdp")
+	webcam, err := gocv.OpenVideoCapture("rtsp://192.168.1.39:8080/video/h264")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -190,9 +190,9 @@ func (app *Application) ai() {
 				centroid.X = target[0].Dx() / 2
 				centroid.Y = target[0].Dy() / 2
 
-				frameCenter := imgCurrent.Cols() / 2
-				rightBorder := imgCurrent.Cols() * 0.6
-				leftBorder := imgCurrent.Cols() * 0.4
+				//frameCenter := imgCurrent.Cols() / 2
+				rightBorder := int(float64(imgCurrent.Cols()) * 0.6)
+				leftBorder := int(float64(imgCurrent.Cols()) * 0.4)
 
 				if centroid.X >= leftBorder && centroid.X <= rightBorder {
 					// Need to ride forward
