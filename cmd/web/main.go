@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	CarIP := "192.168.1.50"
+	CarIP := "192.168.1.158"
 	Port := ":8080"
 
 	robot, err := ral.NewRoboCar(CarIP, Port)

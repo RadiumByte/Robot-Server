@@ -85,7 +85,7 @@ func (app *Application) ChangeCascade(cascade int8) {
 	} else if cascade == 1 {
 		fmt.Println("Cascade type changed to Circle Sign")
 	} else if cascade == 2 {
-		fmt.Println("Cascade type changed to Trapeze Sign")
+		fmt.Println("Cascade type changed to Yield Sign")
 	}
 }
 
@@ -113,10 +113,13 @@ func (app *Application) ProcessCommand(command string) {
 		app.ChangeCascade(2)
 
 	} else {
+		// Manual control block
 		firstChar := command[0]
-		if firstChar == 's' || firstChar == 'f' || firstChar == 'b' {
+		if firstChar == 'S' || firstChar == 'F' || firstChar == 'B' {
 			if !app.IsBlocked {
-				app.Robot.DirectCommand(command)
+				if app.IsManual {
+					app.Robot.DirectCommand(command)
+				}
 			}
 		}
 	}
@@ -131,6 +134,8 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 	res := &Application{}
 	res.Robot = robot
 	res.CascadeType = 0
+	res.IsBlocked = true
+
 	return res, nil
 }
 
@@ -196,6 +201,10 @@ func (app *Application) ai() {
 	failureCounter := 0
 
 	app.Robot.SetSpeed(50)
+
+	m.Lock()
+	_ = webcam.Read(&imgCurrent)
+	m.Unlock()
 
 	fmt.Println("Main loop is starting...")
 	for {
