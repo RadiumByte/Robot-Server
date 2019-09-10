@@ -93,24 +93,30 @@ func (app *Application) ChangeCascade(cascade int8) {
 func (app *Application) ProcessCommand(command string) {
 	if command == "halt" {
 		app.ChangeBlocking(true)
+		app.Robot.DirectCommand("HALT")
 
 	} else if command == "go" {
 		app.ChangeBlocking(false)
 
 	} else if command == "manual" {
 		app.ChangeManual(true)
+		app.Robot.DirectCommand("HALT")
 
 	} else if command == "auto" {
 		app.ChangeManual(false)
+		app.Robot.DirectCommand("HALT")
 
 	} else if command == "stopsign" {
 		app.ChangeCascade(0)
+		app.Robot.DirectCommand("HALT")
 
 	} else if command == "circlesign" {
 		app.ChangeCascade(1)
+		app.Robot.DirectCommand("HALT")
 
 	} else if command == "yieldsign" {
 		app.ChangeCascade(2)
+		app.Robot.DirectCommand("HALT")
 
 	} else {
 		// Manual control block
@@ -140,7 +146,7 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 }
 
 func (app *Application) ai() {
-	webcam, err := gocv.OpenVideoCapture("rtsp://192.168.1.39:8080/video/h264")
+	webcam, err := gocv.OpenVideoCapture("rtsp://192.168.183.150:8080/video/h264")
 	if err != nil {
 		fmt.Println(err)
 		return

@@ -48,7 +48,9 @@ func (robot *RoboCar) Turn(steerValue int) {
 
 // Turn creates HTTP client and sends coommand to robot
 func (robot *RoboCar) DirectCommand(command string) {
-	command += "A"
+	if command != "HALT" {
+		command += "A"
+	}
 
 	fmt.Println("Sending command: " + command)
 
