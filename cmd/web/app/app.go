@@ -146,7 +146,7 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 }
 
 func (app *Application) ai() {
-	webcam, err := gocv.OpenVideoCapture("rtsp://192.168.183.150:8080/video/h264")
+	webcam, err := gocv.OpenVideoCapture(1)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -196,17 +196,17 @@ func (app *Application) ai() {
 
 	var isFirstIteration bool = true
 
-	// Use these constants to change object filtering
-	var MAX_DISTANCE_DIFF float64 = 500.0
-	var MAX_SQUARE_DIFF float64 = 30000.0
-	var MAX_SIMILARITY_RATE float64 = 100.0
-	var MIN_SIMILARITY_RATE float64 = 1.0
+	// Constants for object filtering
+	var MAX_DISTANCE_DIFF float64
+	var MAX_SQUARE_DIFF float64
+	var MAX_SIMILARITY_RATE float64
+	var MIN_SIMILARITY_RATE float64
 
 	comparator := contrib.ColorMomentHash{}
 
 	failureCounter := 0
 
-	app.Robot.SetSpeed(50)
+	app.Robot.SetSpeed(25)
 
 	m.Lock()
 	_ = webcam.Read(&imgCurrent)
@@ -216,6 +216,7 @@ func (app *Application) ai() {
 	for {
 		if !app.IsManual {
 			if !app.IsBlocked {
+
 				m.Lock()
 				ok := webcam.Read(&imgCurrent)
 				m.Unlock()
@@ -235,13 +236,28 @@ func (app *Application) ai() {
 					// Stop cascade
 					rawObjects = cascadeStop.DetectMultiScale(imgCurrent)
 
+					MAX_DISTANCE_DIFF = 400.0
+					MAX_SQUARE_DIFF = 40000.0
+					MAX_SIMILARITY_RATE = 100.0
+					MIN_SIMILARITY_RATE = 1.0
+
 				} else if app.CascadeType == 1 {
 					// Circle cascade
 					rawObjects = cascadeCircle.DetectMultiScale(imgCurrent)
 
+					MAX_DISTANCE_DIFF = 200.0
+					MAX_SQUARE_DIFF = 20000.0
+					MAX_SIMILARITY_RATE = 35.0
+					MIN_SIMILARITY_RATE = 1.0
+
 				} else if app.CascadeType == 2 {
 					// Yield cascade
 					rawObjects = cascadeTrapeze.DetectMultiScale(imgCurrent)
+
+					MAX_DISTANCE_DIFF = 600.0
+					MAX_SQUARE_DIFF = 60000.0
+					MAX_SIMILARITY_RATE = 140.0
+					MIN_SIMILARITY_RATE = 1.0
 				}
 
 				if failureCounter >= 20 {
@@ -253,8 +269,6 @@ func (app *Application) ai() {
 					failureCounter = failureCounter + 1
 					continue
 				}
-
-				failureCounter = 0
 
 				var nearObjects []image.Rectangle
 				var trustedObjects []image.Rectangle
@@ -336,20 +350,70 @@ func (app *Application) ai() {
 					continue
 				}
 
-				// Main logic
+				var finalObject image.Rectangle
+
+				// This situation occurs if several good targets found
+				// Need to find largest (closest) good target
+				if len(trustedObjects) > 1 {
+					maxSquareIndex := -1
+					maxSquare := 0.0
+					for i, rect := range trustedObjects {
+						currentSquare := float64(rect.Dx() * rect.Dy())
+						if currentSquare > maxSquare {
+							maxSquare = currentSquare
+							maxSquareIndex = i
+						}
+					}
+					finalObject = trustedObjects[maxSquareIndex]
+				}
+
+				// This counter checks how many times cascade returned empty data
+				failureCounter = 0
+
+				// Car throttle logic
+				// Throttle depends on a distance to target
+				// Bigger square - lower throttle down to full stop
+
+				var maxThrottle int = 50
+				var minThrottle int = 25
+				var maxSquare float64 = 700 * 700
+				var minSquare float64 = 100 * 100
+
+				targetSquare := float64(finalObject.Dx() * finalObject.Dy())
+
+				if targetSquare >= maxSquare {
+					// Target is too close
+
+					app.Robot.SetSpeed(0)
+					app.Robot.DirectCommand("FAILOBST")
+					app.Robot.DirectCommand("HALT")
+				} else {
+					// Target in range
+
+					targetSquareInRange := maxSquare - targetSquare
+					deltaThrottle := maxThrottle - minThrottle
+					deltaSquare := math.Abs(maxSquare - minSquare)
+
+					calculatedThrottle := ((deltaThrottle * targetSquareInRange) / deltaSquare) + minThrottle
+					app.Robot.SetSpeed(calculatedThrottle)
+				}
+
+				// Car steering logic
+				// Position of target influences on wheels turning
+
 				var command int
 
 				var centroid image.Point
-				centroid.X = (trustedObjects[0].Dx() / 2) + trustedObjects[0].Min.X
-				centroid.Y = (trustedObjects[0].Dy() / 2) + trustedObjects[0].Min.Y
+				centroid.X = (finalObject.Dx() / 2) + finalObject.Min.X
+				centroid.Y = (finalObject.Dy() / 2) + finalObject.Min.Y
 
 				prevTargetCenter = centroid
-				prevTargetSquare = float64(trustedObjects[0].Dx() * trustedObjects[0].Dy())
+				prevTargetSquare = float64(finalObject.Dx() * finalObject.Dy())
 
 				isFirstIteration = false
 
-				rightBorder := int(float64(imgCurrent.Cols()) * 0.55)
-				leftBorder := int(float64(imgCurrent.Cols()) * 0.45)
+				rightBorder := int(float64(imgCurrent.Cols()) * 0.53)
+				leftBorder := int(float64(imgCurrent.Cols()) * 0.47)
 
 				if centroid.X >= leftBorder && centroid.X <= rightBorder {
 					// Need to ride forward
@@ -364,12 +428,19 @@ func (app *Application) ai() {
 					command = ((50 * centroid.X) / (imgCurrent.Cols() - rightBorder)) - 12
 				}
 
+				// Max turning if target is going to escape frame
+				if command >= 80 {
+					command = 100
+				} else if command <= 20 {
+					command = 0
+				}
+
 				app.Robot.Turn(command)
 
-				gocv.Rectangle(&imgCurrent, trustedObjects[0], blue, 3)
+				gocv.Rectangle(&imgCurrent, finalObject, blue, 3)
 
 				size := gocv.GetTextSize("Target", gocv.FontHersheyPlain, 1.2, 2)
-				pt := image.Pt(trustedObjects[0].Min.X+(trustedObjects[0].Min.X/2)-(size.X/2), trustedObjects[0].Min.Y-2)
+				pt := image.Pt(finalObject.Min.X+(finalObject.Min.X/2)-(size.X/2), finalObject.Min.Y-2)
 				gocv.PutText(&imgCurrent, "Target", pt, gocv.FontHersheyPlain, 1.2, blue, 2)
 			}
 
