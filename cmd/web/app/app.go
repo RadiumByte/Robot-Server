@@ -146,7 +146,7 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 }
 
 func (app *Application) ai() {
-	webcam, err := gocv.OpenVideoCapture(1)
+	webcam, err := gocv.OpenVideoCapture(0)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -190,13 +190,14 @@ func (app *Application) ai() {
 
 	blue := color.RGBA{0, 0, 255, 0}
 
-	// "Memory" about rawObjects
+	// "Memory" about previous correct target
 	var prevTargetCenter image.Point
 	var prevTargetSquare float64
 
 	var isFirstIteration bool = true
 
 	// Constants for object filtering
+	// Don't set them here
 	var MAX_DISTANCE_DIFF float64
 	var MAX_SQUARE_DIFF float64
 	var MAX_SIMILARITY_RATE float64
@@ -206,7 +207,7 @@ func (app *Application) ai() {
 
 	failureCounter := 0
 
-	app.Robot.SetSpeed(25)
+	app.Robot.SetSpeed(15)
 
 	m.Lock()
 	_ = webcam.Read(&imgCurrent)
@@ -230,6 +231,7 @@ func (app *Application) ai() {
 					continue
 				}
 
+				// rawObjects stores all trash, which Haar Cascade returned
 				var rawObjects []image.Rectangle
 
 				if app.CascadeType == 0 {
@@ -261,7 +263,8 @@ func (app *Application) ai() {
 				}
 
 				if failureCounter >= 20 {
-					app.Robot.SetSpeed(0)
+					// All normal targets disappeared, so car stoppes
+					app.Robot.DirectCommand("HALT")
 				}
 
 				if len(rawObjects) == 0 {
@@ -270,13 +273,17 @@ func (app *Application) ai() {
 					continue
 				}
 
+				// nearObjects stores targets, which passed geometrical conditions
 				var nearObjects []image.Rectangle
+
+				// trustedObjects stores targets, which passed content and geometrical conditions
 				var trustedObjects []image.Rectangle
 
 				if isFirstIteration {
 					// At first iteration simply determine biggest object
 					// It is unsafe, but works only once
 
+					// Max square calculation
 					maxSquareIndex := -1
 					maxSquare := 0.0
 					for i, rect := range rawObjects {
@@ -289,7 +296,7 @@ func (app *Application) ai() {
 					trustedObjects = append(trustedObjects, rawObjects[maxSquareIndex])
 
 				} else {
-					// Generic multi-step filtering
+					// Generic multi-step filtering, enables after first iteration
 					// First step - find geometrically close objects by their square and location
 
 					for _, rect := range rawObjects {
@@ -310,7 +317,7 @@ func (app *Application) ai() {
 						}
 					}
 
-					// Second step - usage of Color Moment Hash to compare target with model
+					// Second step - usage of Color Moment Hash to compare target with preloaded model
 					computedCurrent := gocv.NewMat()
 					defer computedCurrent.Close()
 
@@ -350,6 +357,7 @@ func (app *Application) ai() {
 					continue
 				}
 
+				// finalObject stores only one target, selected by filter
 				var finalObject image.Rectangle
 
 				// This situation occurs if several good targets found
@@ -374,49 +382,68 @@ func (app *Application) ai() {
 				// Throttle depends on a distance to target
 				// Bigger square - lower throttle down to full stop
 
-				var maxThrottle int = 50
-				var minThrottle int = 25
+				// Car behaviour configuration
+				// Change car's speed while driving forward
+				var maxThrottle int = 60
+				var minThrottle int = 15
+
+				// Change distances for min and max speed
+				// Min speed:
 				var maxSquare float64 = 700 * 700
+				// Max speed:
 				var minSquare float64 = 100 * 100
 
+				// How fast car will accelerate backward
+				var backwardAcceleration float64 = 20000.0
+
+				// Max speed for driving backward
+				var maxBackwardThrottle = 50
+
+				// Actual size of the target
 				targetSquare := float64(finalObject.Dx() * finalObject.Dy())
 
-				if targetSquare >= maxSquare {
-					// Target is too close
+				if targetSquare > maxSquare {
+					// Target is too close - car is going backward
 
-					app.Robot.SetSpeed(0)
-					app.Robot.DirectCommand("FAILOBST")
-					app.Robot.DirectCommand("HALT")
+					deltaSquare := targetSquare - maxSquare
+					calculatedThrottle := int(deltaSquare / backwardAcceleration)
+					calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
+
+					app.Robot.DirectCommand("B" + calculatedThrottleStr)
 				} else {
-					// Target in range
+					// Target in range - car is going forward
 
 					targetSquareInRange := maxSquare - targetSquare
 					deltaThrottle := maxThrottle - minThrottle
 					deltaSquare := math.Abs(maxSquare - minSquare)
 
-					calculatedThrottle := ((deltaThrottle * targetSquareInRange) / deltaSquare) + minThrottle
+					calculatedThrottle := int(((float64(deltaThrottle) * targetSquareInRange) / deltaSquare) + float64(minThrottle))
 					app.Robot.SetSpeed(calculatedThrottle)
 				}
 
 				// Car steering logic
-				// Position of target influences on wheels turning
+				// Horizontal position of target influences on wheels steering
 
 				var command int
 
+				// Calculate center of the target
 				var centroid image.Point
 				centroid.X = (finalObject.Dx() / 2) + finalObject.Min.X
 				centroid.Y = (finalObject.Dy() / 2) + finalObject.Min.Y
 
+				// Refresh previous center and square
 				prevTargetCenter = centroid
 				prevTargetSquare = float64(finalObject.Dx() * finalObject.Dy())
 
 				isFirstIteration = false
 
+				// Borders determine tube area in the center of frame
+				// In this area car won't steer in any directions
 				rightBorder := int(float64(imgCurrent.Cols()) * 0.53)
 				leftBorder := int(float64(imgCurrent.Cols()) * 0.47)
 
 				if centroid.X >= leftBorder && centroid.X <= rightBorder {
-					// Need to ride forward
+					// Taeget in tube - need to ride forward
 					command = 50
 
 				} else if centroid.X < leftBorder {
@@ -429,6 +456,7 @@ func (app *Application) ai() {
 				}
 
 				// Max turning if target is going to escape frame
+				// In theory, this will increase steering ability
 				if command >= 80 {
 					command = 100
 				} else if command <= 20 {
@@ -437,8 +465,8 @@ func (app *Application) ai() {
 
 				app.Robot.Turn(command)
 
+				// Draw bounding box and show it
 				gocv.Rectangle(&imgCurrent, finalObject, blue, 3)
-
 				size := gocv.GetTextSize("Target", gocv.FontHersheyPlain, 1.2, 2)
 				pt := image.Pt(finalObject.Min.X+(finalObject.Min.X/2)-(size.X/2), finalObject.Min.Y-2)
 				gocv.PutText(&imgCurrent, "Target", pt, gocv.FontHersheyPlain, 1.2, blue, 2)
