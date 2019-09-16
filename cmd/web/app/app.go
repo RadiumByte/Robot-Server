@@ -40,7 +40,7 @@ type RobotServer interface {
 	ChangeBlocking(bool)
 	ChangeManual(bool)
 
-	ChangeCascade(int8)
+	ChangeCascade(int)
 	Start()
 }
 
@@ -55,7 +55,7 @@ type Application struct {
 	Robot       RobotAccessLayer
 	IsManual    bool
 	IsBlocked   bool
-	CascadeType int8
+	CascadeType int
 }
 
 // ChangeBlocking can block/unblock car movements

@@ -1,7 +1,6 @@
 package ral
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/valyala/fasthttp"
