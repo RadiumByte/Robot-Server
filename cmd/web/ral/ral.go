@@ -9,15 +9,14 @@ import (
 
 // RoboCar represents Raspberry Pi based car
 type RoboCar struct {
-	Client        *fasthttp.Client
-	Request       *fasthttp.Request
-	Response      *fasthttp.Response
-	CarIP         string
-	CarPort       string
-	MovementSpeed int
+	Client   *fasthttp.Client
+	Request  *fasthttp.Request
+	Response *fasthttp.Response
+	CarIP    string
+	CarPort  string
 }
 
-// Turn creates HTTP client and sends coommand to robot
+// Turn sends only steering command to Car
 func (robot *RoboCar) Turn(steerValue int) {
 	if steerValue > 100 {
 		steerValue = 100
@@ -27,48 +26,28 @@ func (robot *RoboCar) Turn(steerValue int) {
 
 	steerValueStr := strconv.Itoa(steerValue)
 	command := "S" + steerValueStr + "A"
-	fmt.Println("Sending command: " + command)
+	//fmt.Println("Sending command: " + command)
 
 	url := "http://" + robot.CarIP + robot.CarPort + "/" + command
 	robot.Request.SetRequestURI(url)
 	robot.Client.Do(robot.Request, robot.Response)
 
-	fmt.Println("Command sent to robot: " + command)
-
-	throttleValueStr := strconv.Itoa(robot.MovementSpeed)
-	command = "F" + throttleValueStr + "A"
-	fmt.Println("Sending command: " + command)
-
-	url = "http://" + robot.CarIP + robot.CarPort + "/" + command
-	robot.Request.SetRequestURI(url)
-	robot.Client.Do(robot.Request, robot.Response)
-
-	fmt.Println("Command sent to robot: " + command)
+	//fmt.Println("Command sent to robot: " + command)
 }
 
-// Turn creates HTTP client and sends coommand to robot
+// DirectCommand sends any command, according to Car's specs
 func (robot *RoboCar) DirectCommand(command string) {
 	if command != "HALT" {
 		command += "A"
 	}
 
-	fmt.Println("Sending command: " + command)
+	//fmt.Println("Sending command: " + command)
 
 	url := "http://" + robot.CarIP + robot.CarPort + "/" + command
 	robot.Request.SetRequestURI(url)
 	robot.Client.Do(robot.Request, robot.Response)
 
-	fmt.Println("Command sent to robot: " + command)
-}
-
-func (robot *RoboCar) SetSpeed(speed int) {
-	if speed > 100 {
-		speed = 100
-	} else if speed < 0 {
-		speed = 0
-	}
-
-	robot.MovementSpeed = speed
+	//fmt.Println("Command sent to robot: " + command)
 }
 
 // NewRoboCar constructs object of RoboCar

@@ -2,17 +2,24 @@ package app
 
 import (
 	"fmt"
-	"math"
-	"sync"
-
 	"image"
 	"image/color"
+	"math"
+	"strconv"
+	"sync"
 
 	"gocv.io/x/gocv"
 	"gocv.io/x/gocv/contrib"
 )
 
+const (
+	StopCascade   = 0
+	CircleCascade = 1
+	YieldCascade  = 2
+)
+
 // bufferEraser cleans input videostream from unnecessary frames
+// So, input camera FPS == processing FPS
 func bufferEraser(source *gocv.VideoCapture, m *sync.Mutex) {
 
 	tmp := gocv.NewMat()
@@ -40,7 +47,6 @@ type RobotServer interface {
 // RobotAccessLayer is an interface for RAL usage from Application
 type RobotAccessLayer interface {
 	Turn(int)
-	SetSpeed(int)
 	DirectCommand(string)
 }
 
@@ -78,13 +84,13 @@ func (app *Application) ChangeManual(mode bool) {
 // 0 - stop
 // 1 - circle
 // 2 - trapeze
-func (app *Application) ChangeCascade(cascade int8) {
+func (app *Application) ChangeCascade(cascade int) {
 	app.CascadeType = cascade
-	if cascade == 0 {
+	if cascade == StopCascade {
 		fmt.Println("Cascade type changed to Stop Sign")
-	} else if cascade == 1 {
+	} else if cascade == CircleCascade {
 		fmt.Println("Cascade type changed to Circle Sign")
-	} else if cascade == 2 {
+	} else if cascade == YieldCascade {
 		fmt.Println("Cascade type changed to Yield Sign")
 	}
 }
@@ -107,15 +113,15 @@ func (app *Application) ProcessCommand(command string) {
 		app.Robot.DirectCommand("HALT")
 
 	} else if command == "stopsign" {
-		app.ChangeCascade(0)
+		app.ChangeCascade(StopCascade)
 		app.Robot.DirectCommand("HALT")
 
 	} else if command == "circlesign" {
-		app.ChangeCascade(1)
+		app.ChangeCascade(CircleCascade)
 		app.Robot.DirectCommand("HALT")
 
 	} else if command == "yieldsign" {
-		app.ChangeCascade(2)
+		app.ChangeCascade(YieldCascade)
 		app.Robot.DirectCommand("HALT")
 
 	} else {
@@ -139,7 +145,7 @@ func distBetweenPoints(from image.Point, to image.Point) float64 {
 func NewApplication(robot RobotAccessLayer) (*Application, error) {
 	res := &Application{}
 	res.Robot = robot
-	res.CascadeType = 0
+	res.CascadeType = StopCascade
 	res.IsBlocked = true
 
 	return res, nil
@@ -188,16 +194,19 @@ func (app *Application) ai() {
 	cascadeTrapeze := gocv.NewCascadeClassifier()
 	cascadeTrapeze.Load("yield.xml")
 
+	// Color of bounding box around the target
 	blue := color.RGBA{0, 0, 255, 0}
 
 	// "Memory" about previous correct target
+	// It is a component of noise supperssion
 	var prevTargetCenter image.Point
 	var prevTargetSquare float64
 
+	// Target detection on the first step varies from others
 	var isFirstIteration bool = true
 
 	// Constants for object filtering
-	// Don't set them here
+	// They are choosing automatically, don't set them here
 	var MAX_DISTANCE_DIFF float64
 	var MAX_SQUARE_DIFF float64
 	var MAX_SIMILARITY_RATE float64
@@ -206,8 +215,6 @@ func (app *Application) ai() {
 	comparator := contrib.ColorMomentHash{}
 
 	failureCounter := 0
-
-	app.Robot.SetSpeed(15)
 
 	m.Lock()
 	_ = webcam.Read(&imgCurrent)
@@ -231,10 +238,10 @@ func (app *Application) ai() {
 					continue
 				}
 
-				// rawObjects stores all trash, which Haar Cascade returned
+				// rawObjects stores everything, which Haar Cascade returned, including noise
 				var rawObjects []image.Rectangle
 
-				if app.CascadeType == 0 {
+				if app.CascadeType == StopCascade {
 					// Stop cascade
 					rawObjects = cascadeStop.DetectMultiScale(imgCurrent)
 
@@ -243,7 +250,7 @@ func (app *Application) ai() {
 					MAX_SIMILARITY_RATE = 100.0
 					MIN_SIMILARITY_RATE = 1.0
 
-				} else if app.CascadeType == 1 {
+				} else if app.CascadeType == CircleCascade {
 					// Circle cascade
 					rawObjects = cascadeCircle.DetectMultiScale(imgCurrent)
 
@@ -252,7 +259,7 @@ func (app *Application) ai() {
 					MAX_SIMILARITY_RATE = 35.0
 					MIN_SIMILARITY_RATE = 1.0
 
-				} else if app.CascadeType == 2 {
+				} else if app.CascadeType == YieldCascade {
 					// Yield cascade
 					rawObjects = cascadeTrapeze.DetectMultiScale(imgCurrent)
 
@@ -262,9 +269,10 @@ func (app *Application) ai() {
 					MIN_SIMILARITY_RATE = 1.0
 				}
 
-				if failureCounter >= 20 {
-					// All normal targets disappeared, so car stoppes
+				if failureCounter >= 5 {
+					// All normal targets disappeared, so car halts
 					app.Robot.DirectCommand("HALT")
+					isFirstIteration = true
 				}
 
 				if len(rawObjects) == 0 {
@@ -328,11 +336,11 @@ func (app *Application) ai() {
 					defer regionTarget.Close()
 
 					// Precalculated models
-					if app.CascadeType == 0 {
+					if app.CascadeType == StopCascade {
 						comparator.Compute(imgStopSign, &computedTarget)
-					} else if app.CascadeType == 1 {
+					} else if app.CascadeType == CircleCascade {
 						comparator.Compute(imgCircleSign, &computedTarget)
-					} else if app.CascadeType == 2 {
+					} else if app.CascadeType == YieldCascade {
 						comparator.Compute(imgYieldSign, &computedTarget)
 					}
 
@@ -354,6 +362,7 @@ func (app *Application) ai() {
 
 				if len(trustedObjects) == 0 {
 					fmt.Println("No trusted objects found")
+					failureCounter = failureCounter + 1
 					continue
 				}
 
@@ -373,6 +382,8 @@ func (app *Application) ai() {
 						}
 					}
 					finalObject = trustedObjects[maxSquareIndex]
+				} else if len(trustedObjects) == 1 {
+					finalObject = trustedObjects[0]
 				}
 
 				// This counter checks how many times cascade returned empty data
@@ -384,31 +395,37 @@ func (app *Application) ai() {
 
 				// Car behaviour configuration
 				// Change car's speed while driving forward
-				var maxThrottle int = 60
+				var maxThrottle int = 70
 				var minThrottle int = 15
 
 				// Change distances for min and max speed
 				// Min speed:
-				var maxSquare float64 = 700 * 700
+				var maxSquare float64 = 85 * 85
 				// Max speed:
-				var minSquare float64 = 100 * 100
+				var minSquare float64 = 35 * 35
 
 				// How fast car will accelerate backward
-				var backwardAcceleration float64 = 20000.0
+				var backwardAcceleration float64 = 650.0
 
 				// Max speed for driving backward
-				var maxBackwardThrottle = 50
+				var maxBackwardThrottle int = 60
 
 				// Actual size of the target
 				targetSquare := float64(finalObject.Dx() * finalObject.Dy())
+				fmt.Print("Target square: ")
+				fmt.Println(targetSquare)
 
 				if targetSquare > maxSquare {
 					// Target is too close - car is going backward
 
 					deltaSquare := targetSquare - maxSquare
 					calculatedThrottle := int(deltaSquare / backwardAcceleration)
-					calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
 
+					if calculatedThrottle > maxBackwardThrottle {
+						calculatedThrottle = maxBackwardThrottle
+					}
+
+					calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
 					app.Robot.DirectCommand("B" + calculatedThrottleStr)
 				} else {
 					// Target in range - car is going forward
@@ -418,12 +435,17 @@ func (app *Application) ai() {
 					deltaSquare := math.Abs(maxSquare - minSquare)
 
 					calculatedThrottle := int(((float64(deltaThrottle) * targetSquareInRange) / deltaSquare) + float64(minThrottle))
-					app.Robot.SetSpeed(calculatedThrottle)
+
+					if calculatedThrottle > maxThrottle {
+						calculatedThrottle = maxThrottle
+					}
+
+					calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
+					app.Robot.DirectCommand("F" + calculatedThrottleStr)
 				}
 
 				// Car steering logic
 				// Horizontal position of target influences on wheels steering
-
 				var command int
 
 				// Calculate center of the target
@@ -439,11 +461,11 @@ func (app *Application) ai() {
 
 				// Borders determine tube area in the center of frame
 				// In this area car won't steer in any directions
-				rightBorder := int(float64(imgCurrent.Cols()) * 0.53)
-				leftBorder := int(float64(imgCurrent.Cols()) * 0.47)
+				rightBorder := int(float64(imgCurrent.Cols()) * 0.52)
+				leftBorder := int(float64(imgCurrent.Cols()) * 0.48)
 
 				if centroid.X >= leftBorder && centroid.X <= rightBorder {
-					// Taeget in tube - need to ride forward
+					// Target in tube - need to ride forward
 					command = 50
 
 				} else if centroid.X < leftBorder {
