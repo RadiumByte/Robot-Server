@@ -1,6 +1,7 @@
 package ral
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/valyala/fasthttp"
@@ -40,13 +41,13 @@ func (robot *RoboCar) DirectCommand(command string) {
 		command += "A"
 	}
 
-	//fmt.Println("Sending command: " + command)
+	fmt.Println("Sending command: " + command)
 
 	url := "http://" + robot.CarIP + robot.CarPort + "/" + command
 	robot.Request.SetRequestURI(url)
 	robot.Client.Do(robot.Request, robot.Response)
 
-	//fmt.Println("Command sent to robot: " + command)
+	fmt.Println("Command sent to robot: " + command)
 }
 
 // NewRoboCar constructs object of RoboCar

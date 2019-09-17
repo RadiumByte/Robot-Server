@@ -205,6 +205,28 @@ func (app *Application) ai() {
 	// Target detection on the first step varies from others
 	var isFirstIteration bool = true
 
+	// Car behaviour configuration
+	// Change car's speed while driving forward
+	var maxThrottle int = 70
+	var minThrottle int = 15
+
+	// Change distances for min and max speed
+	// Min speed:
+	var maxSquare float64 = 85 * 85
+	// Max speed:
+	var minSquare float64 = 35 * 35
+
+	// Memory about last car's movement
+	// Need it for reducing network load
+	var prevThrottle int = 0
+	var prevSteering int = 50
+
+	// How fast car will accelerate backward
+	var backwardAcceleration float64 = 650.0
+
+	// Max speed for driving backward
+	var maxBackwardThrottle int = 60
+
 	// Constants for object filtering
 	// They are choosing automatically, don't set them here
 	var MAX_DISTANCE_DIFF float64
@@ -393,23 +415,6 @@ func (app *Application) ai() {
 				// Throttle depends on a distance to target
 				// Bigger square - lower throttle down to full stop
 
-				// Car behaviour configuration
-				// Change car's speed while driving forward
-				var maxThrottle int = 70
-				var minThrottle int = 15
-
-				// Change distances for min and max speed
-				// Min speed:
-				var maxSquare float64 = 85 * 85
-				// Max speed:
-				var minSquare float64 = 35 * 35
-
-				// How fast car will accelerate backward
-				var backwardAcceleration float64 = 650.0
-
-				// Max speed for driving backward
-				var maxBackwardThrottle int = 60
-
 				// Actual size of the target
 				targetSquare := float64(finalObject.Dx() * finalObject.Dy())
 				fmt.Print("Target square: ")
@@ -440,8 +445,13 @@ func (app *Application) ai() {
 						calculatedThrottle = maxThrottle
 					}
 
-					calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
-					app.Robot.DirectCommand("F" + calculatedThrottleStr)
+					// Throttle sensivity
+					// If throttle is almost the same as previous - no need to send command again
+					if math.Abs(calculatedThrottle-prevThrottle) > 2 {
+						prevThrottle = calculatedThrottle
+						calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
+						app.Robot.DirectCommand("F" + calculatedThrottleStr)
+					}
 				}
 
 				// Car steering logic
@@ -485,7 +495,12 @@ func (app *Application) ai() {
 					command = 0
 				}
 
-				app.Robot.Turn(command)
+				// Steering sensivity
+				// If steering is almost the same as previous - no need to send command again
+				if math.Abs(command-prevSteering) > 2 {
+					prevSteering = command
+					app.Robot.Turn(command)
+				}
 
 				// Draw bounding box and show it
 				gocv.Rectangle(&imgCurrent, finalObject, blue, 3)
