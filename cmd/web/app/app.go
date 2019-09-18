@@ -63,9 +63,9 @@ func (app *Application) ChangeBlocking(mode bool) {
 	app.IsBlocked = mode
 
 	if mode {
-		fmt.Println("Car is blocked")
+		//fmt.Println("Car is blocked")
 	} else {
-		fmt.Println("Car is moving")
+		//fmt.Println("Car is moving")
 	}
 }
 
@@ -74,9 +74,9 @@ func (app *Application) ChangeManual(mode bool) {
 	app.IsManual = mode
 
 	if mode {
-		fmt.Println("Car is on manual control")
+		//fmt.Println("Car is on manual control")
 	} else {
-		fmt.Println("Car is driving automatically")
+		//fmt.Println("Car is driving automatically")
 	}
 }
 
@@ -87,11 +87,11 @@ func (app *Application) ChangeManual(mode bool) {
 func (app *Application) ChangeCascade(cascade int) {
 	app.CascadeType = cascade
 	if cascade == StopCascade {
-		fmt.Println("Cascade type changed to Stop Sign")
+		//fmt.Println("Cascade type changed to Stop Sign")
 	} else if cascade == CircleCascade {
-		fmt.Println("Cascade type changed to Circle Sign")
+		//fmt.Println("Cascade type changed to Circle Sign")
 	} else if cascade == YieldCascade {
-		fmt.Println("Cascade type changed to Yield Sign")
+		//fmt.Println("Cascade type changed to Yield Sign")
 	}
 }
 
@@ -106,7 +106,7 @@ func (app *Application) ProcessCommand(command string) {
 
 	} else if command == "manual" {
 		app.ChangeManual(true)
-		app.Robot.DirectCommand("HALT")
+		//app.Robot.DirectCommand("HALT")
 
 	} else if command == "auto" {
 		app.ChangeManual(false)
@@ -126,11 +126,12 @@ func (app *Application) ProcessCommand(command string) {
 
 	} else {
 		// Manual control block
-		firstChar := command[0]
-		if firstChar == 'S' || firstChar == 'F' || firstChar == 'B' {
+		if command[0] == 'S' || command[0] == 'F' || command[0] == 'B' {
 			if !app.IsBlocked {
 				if app.IsManual {
-					app.Robot.DirectCommand(command)
+					//fmt.Print("Command got from device: ")
+					//fmt.Println(command)
+					//app.Robot.DirectCommand(command)
 				}
 			}
 		}
@@ -146,7 +147,8 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 	res := &Application{}
 	res.Robot = robot
 	res.CascadeType = StopCascade
-	res.IsBlocked = true
+	res.IsBlocked = false
+	res.IsManual = true
 
 	return res, nil
 }
@@ -447,7 +449,7 @@ func (app *Application) ai() {
 
 					// Throttle sensivity
 					// If throttle is almost the same as previous - no need to send command again
-					if math.Abs(calculatedThrottle-prevThrottle) > 2 {
+					if math.Abs(float64(calculatedThrottle-prevThrottle)) > 2 {
 						prevThrottle = calculatedThrottle
 						calculatedThrottleStr := strconv.Itoa(calculatedThrottle)
 						app.Robot.DirectCommand("F" + calculatedThrottleStr)
@@ -497,7 +499,7 @@ func (app *Application) ai() {
 
 				// Steering sensivity
 				// If steering is almost the same as previous - no need to send command again
-				if math.Abs(command-prevSteering) > 2 {
+				if math.Abs(float64(command-prevSteering)) > 2 {
 					prevSteering = command
 					app.Robot.Turn(command)
 				}

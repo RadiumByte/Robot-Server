@@ -16,6 +16,8 @@ type WebServer struct {
 // ProcessCommand pushes new Command to Application for processing
 func (server *WebServer) PushCommand(ctx *fasthttp.RequestCtx) {
 	commandStr := ctx.UserValue("command").(string)
+	//fmt.Print("PUT controller got data: ")
+	//fmt.Println(commandStr)
 	server.application.ProcessCommand(commandStr)
 }
 
