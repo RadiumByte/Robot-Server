@@ -3,8 +3,11 @@ package app
 import (
 	"fmt"
 	"image"
+	"time"
+
 	"image/color"
 	"math"
+
 	"strconv"
 	"sync"
 
@@ -56,6 +59,7 @@ type Application struct {
 	IsManual    bool
 	IsBlocked   bool
 	CascadeType int
+	ReadMutex   sync.Mutex
 }
 
 // ChangeBlocking can block/unblock car movements
@@ -63,9 +67,9 @@ func (app *Application) ChangeBlocking(mode bool) {
 	app.IsBlocked = mode
 
 	if mode {
-		//fmt.Println("Car is blocked")
+		fmt.Println("Car is blocked")
 	} else {
-		//fmt.Println("Car is moving")
+		fmt.Println("Car is moving")
 	}
 }
 
@@ -74,9 +78,9 @@ func (app *Application) ChangeManual(mode bool) {
 	app.IsManual = mode
 
 	if mode {
-		//fmt.Println("Car is on manual control")
+		fmt.Println("Car is on manual control")
 	} else {
-		//fmt.Println("Car is driving automatically")
+		fmt.Println("Car is driving automatically")
 	}
 }
 
@@ -87,11 +91,11 @@ func (app *Application) ChangeManual(mode bool) {
 func (app *Application) ChangeCascade(cascade int) {
 	app.CascadeType = cascade
 	if cascade == StopCascade {
-		//fmt.Println("Cascade type changed to Stop Sign")
+		fmt.Println("Cascade type changed to Stop Sign")
 	} else if cascade == CircleCascade {
-		//fmt.Println("Cascade type changed to Circle Sign")
+		fmt.Println("Cascade type changed to Circle Sign")
 	} else if cascade == YieldCascade {
-		//fmt.Println("Cascade type changed to Yield Sign")
+		fmt.Println("Cascade type changed to Yield Sign")
 	}
 }
 
@@ -114,23 +118,21 @@ func (app *Application) ProcessCommand(command string) {
 
 	} else if command == "stopsign" {
 		app.ChangeCascade(StopCascade)
-		app.Robot.DirectCommand("HALT")
+		//app.Robot.DirectCommand("HALT")
 
 	} else if command == "circlesign" {
 		app.ChangeCascade(CircleCascade)
-		app.Robot.DirectCommand("HALT")
+		//app.Robot.DirectCommand("HALT")
 
 	} else if command == "yieldsign" {
 		app.ChangeCascade(YieldCascade)
-		app.Robot.DirectCommand("HALT")
+		//app.Robot.DirectCommand("HALT")
 
 	} else {
 		// Manual control block
 		if command[0] == 'S' || command[0] == 'F' || command[0] == 'B' {
-			if !app.IsBlocked {
+			if !app.IsManual {
 				if app.IsManual {
-					//fmt.Print("Command got from device: ")
-					//fmt.Println(command)
 					//app.Robot.DirectCommand(command)
 				}
 			}
@@ -147,13 +149,14 @@ func NewApplication(robot RobotAccessLayer) (*Application, error) {
 	res := &Application{}
 	res.Robot = robot
 	res.CascadeType = StopCascade
-	res.IsBlocked = false
-	res.IsManual = true
+	res.IsBlocked = true
+	res.IsManual = false
 
 	return res, nil
 }
 
 func (app *Application) ai() {
+
 	webcam, err := gocv.OpenVideoCapture(0)
 	if err != nil {
 		fmt.Println(err)
@@ -509,6 +512,8 @@ func (app *Application) ai() {
 				size := gocv.GetTextSize("Target", gocv.FontHersheyPlain, 1.2, 2)
 				pt := image.Pt(finalObject.Min.X+(finalObject.Min.X/2)-(size.X/2), finalObject.Min.Y-2)
 				gocv.PutText(&imgCurrent, "Target", pt, gocv.FontHersheyPlain, 1.2, blue, 2)
+			} else {
+				time.Sleep(1 * time.Millisecond)
 			}
 
 			window.IMShow(imgCurrent)
@@ -516,7 +521,10 @@ func (app *Application) ai() {
 				break
 			}
 
+		} else {
+			time.Sleep(1 * time.Millisecond)
 		}
+
 	}
 }
 
